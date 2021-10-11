@@ -27,7 +27,13 @@ class ReinforceWithBaseline(tf.keras.Model):
         self.num_actions = num_actions
 
         # TODO: Define actor network parameters, critic network parameters, and optimizer
-        pass
+        self.learning_rate = .001
+        self.actor1 = tf.keras.layers.Dense(state_size*32)
+        self.actor2 = tf.keras.layers.Dense(state_size*16, activation='relu')
+        self.actor3 = tf.keras.layers.Dense(self.num_actions)
+        
+        self.critic1 = tf.keras.layers.Dense(state_size*16)
+        self.critic2 = tf.keras.layers.Dense(1)
 
     def call(self, states):
         """
@@ -41,7 +47,12 @@ class ReinforceWithBaseline(tf.keras.Model):
         for each state in the episode
         """
         # TODO: implement this!
-        pass
+        states = tf.convert_to_tensor(states)
+        a1 = self.actor1(states)
+        a2 = self.actor2(a1)
+        a3 = self.actor3(a2)
+        probs = tf.nn.softmax(a3)
+        return probs
 
     def value_function(self, states):
         """
@@ -53,7 +64,10 @@ class ReinforceWithBaseline(tf.keras.Model):
         :return: A [episode_length] matrix representing the value of each state.
         """
         # TODO: implement this :D
-        pass
+        states = tf.convert_to_tensor(states)
+        c1 = self.critic1(states)
+        c2 = self.critic2(c1)
+        return c2
 
     def loss(self, states, actions, discounted_rewards):
         """
@@ -76,4 +90,25 @@ class ReinforceWithBaseline(tf.keras.Model):
         """
         # TODO: implement this :)
         # Hint: use tf.gather_nd (https://www.tensorflow.org/api_docs/python/tf/gather_nd) to get the probabilities of the actions taken by the model
-        pass
+        states = tf.convert_to_tensor(states)
+        actions = tf.convert_to_tensor(actions)
+        discounted_rewards = tf.convert_to_tensor(discounted_rewards)
+        episode_length = tf.size(actions)
+        
+        values = self.value_function(states)
+        values = tf.squeeze(values)
+        advantage = tf.math.subtract(discounted_rewards, values)
+        loss_critic = tf.math.multiply(advantage, advantage)
+        loss_critic = tf.math.reduce_sum(loss_critic)
+        
+        tf.stop_gradient(advantage)
+        probs = self.call(states)
+        actions = tf.reshape(actions, [episode_length, 1])
+        indices = tf.range(episode_length)
+        indices = tf.reshape(indices, [episode_length, 1])
+        actions = tf.concat((indices, actions), 1)
+        probs = tf.gather_nd(probs, actions)
+        probs = tf.math.log(probs)
+        probs = tf.math.multiply(probs, advantage)
+        loss_actor = -1.0 * tf.math.reduce_sum(probs)
+        return (tf.math.add(loss_actor, loss_critic))

@@ -37,6 +37,16 @@ def discount(rewards, discount_factor=.99):
     :returns: discounted_rewards: list containing the discounted rewards for each timestep in the original rewards list
     """
     # TODO: Compute discounted rewards
+    rewards = tf.convert_to_tensor(rewards)
+    timesteps = tf.size(rewards)
+    discounted_rewards = []
+    for t in range(timesteps):
+        subrewards = rewards[t:]
+        gamma = tf.range((timesteps-t), dtype=tf.float32)
+        gamma = tf.math.pow(discount_factor, gamma)
+        subrewards = tf.math.multiply(subrewards, gamma)
+        discounted_rewards.append(tf.math.reduce_sum(subrewards))
+    return tf.convert_to_tensor(discounted_rewards, dtype=tf.float32)
 
 
 def generate_trajectory(env, model):
@@ -58,6 +68,14 @@ def generate_trajectory(env, model):
         # 1) use model to generate probability distribution over next actions
         # 2) sample from this distribution to pick the next action
         states.append(state)
+        
+        state = tf.reshape(state, [1, 4])
+        probs = model.call(state)
+        probs = np.array(probs)
+        probs = np.squeeze(probs)
+        #probs = probs / np.sum(probs)
+        action = np.random.choice(model.num_actions, p=probs)
+        
         actions.append(action)
         state, rwd, done, _ = env.step(action)
         rewards.append(rwd)
@@ -82,6 +100,19 @@ def train(env, model):
     # 1) Use generate trajectory to run an episode and get states, actions, and rewards.
     # 2) Compute discounted rewards.
     # 3) Compute the loss from the model and run backpropagation on the model.
+    optimizer = tf.keras.optimizers.Adam(learning_rate=model.learning_rate)
+    with tf.GradientTape() as tape:
+        states, actions, rewards = generate_trajectory(env, model)
+        states = tf.convert_to_tensor(states)
+        actions = tf.convert_to_tensor(actions)
+        rewards = tf.convert_to_tensor(rewards) #tf or np?
+    
+        discounted_rewards = discount(rewards)
+        episode_loss = model.loss(states, actions, discounted_rewards)
+    gradients = tape.gradient(episode_loss, model.trainable_variables)
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+    
+    return tf.math.reduce_sum(rewards)
 
 
 def main():
@@ -104,8 +135,13 @@ def main():
     # 1) Train your model for 650 episodes, passing in the environment and the agent. 
     # 2) Append the total reward of the episode into a list keeping track of all of the rewards. 
     # 3) After training, print the average of the last 50 rewards you've collected.
+    rewards = []
+    for i in range(650):
+        rewards.append(train(env, model))
+    print(tf.math.reduce_sum(rewards[-50:]) / 50.0)
 
     # TODO: Visualize your rewards.
+    visualize_data(rewards)
 
 
 if __name__ == '__main__':

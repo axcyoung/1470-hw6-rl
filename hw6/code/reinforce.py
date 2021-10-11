@@ -24,6 +24,10 @@ class Reinforce(tf.keras.Model):
         self.num_actions = num_actions
         
         # TODO: Define network parameters and optimizer
+        self.learning_rate = .001
+        self.dense1 = tf.keras.layers.Dense(state_size*32)
+        self.dense2 = tf.keras.layers.Dense(state_size*16, activation='relu')
+        self.dense3 = tf.keras.layers.Dense(self.num_actions)
 
     def call(self, states):
         """
@@ -37,7 +41,12 @@ class Reinforce(tf.keras.Model):
         for each state in the episode
         """
         # TODO: implement this ~
-        pass
+        states = tf.convert_to_tensor(states)
+        d1 = self.dense1(states)
+        d2 = self.dense2(d1)
+        d3 = self.dense3(d2)
+        probs = tf.nn.softmax(d3)
+        return probs
 
     def loss(self, states, actions, discounted_rewards):
         """
@@ -50,5 +59,18 @@ class Reinforce(tf.keras.Model):
         """
         # TODO: implement this
         # Hint: Use gather_nd to get the probability of each action that was actually taken in the episode.
-        pass
-
+        states = tf.convert_to_tensor(states)
+        actions = tf.convert_to_tensor(actions)
+        discounted_rewards = tf.convert_to_tensor(discounted_rewards)
+        episode_length = tf.size(actions)
+        
+        probs = self.call(states)
+        actions = tf.reshape(actions, [episode_length, 1])
+        indices = tf.range(episode_length)
+        indices = tf.reshape(indices, [episode_length, 1])
+        actions = tf.concat((indices, actions), 1)
+        probs = tf.gather_nd(probs, actions)
+        
+        probs = tf.math.log(probs)
+        probs = tf.math.multiply(probs, discounted_rewards)
+        return -1.0 * tf.math.reduce_sum(probs)
